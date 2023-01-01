@@ -36,6 +36,7 @@ extern void __USBInstallSerial() __attribute__((weak));
 extern void __USBInstallKeyboard() __attribute__((weak));
 extern void __USBInstallJoystick() __attribute__((weak));
 extern void __USBInstallMouse() __attribute__((weak));
+extern void __USBInstallConsumerControl() __attribute__((weak));
 extern void __USBInstallMassStorage() __attribute__((weak));
 
 extern void __USBInstallSecondHID_RawHID() __attribute__((weak));
@@ -49,6 +50,7 @@ extern mutex_t __usb_mutex;
 int __USBGetKeyboardReportID();
 int __USBGetMouseReportID();
 int __USBGetJoystickReportID();
+int __USBGetConsumerControlReportID();
 
 int __USBGetHIDInstanceIndexForSharedHID();
 int __USBGetHIDInstanceIndexForRawHID();
