@@ -1,7 +1,7 @@
 #!/bin/bash
 set -o xtrace
 
-[ -z "${REMOTE_URL}" ] && REMOTE_URL=https://github.com/earlephilhower/arduino-pico/releases/download
+[ -z "${REMOTE_URL}" ] && REMOTE_URL=https://github.com/kermite-org/arduino-pico/releases/download
 
 if [ ! -z "${manualversion}" ]; then
 
@@ -96,7 +96,7 @@ echo "Previous pre-release: $prev_pre_release"
 base_ver=$prev_any_release
 
 new_log=$(mktemp)
-git fetch --all --tags
+git fetch --all --tags -f
 git log $base_ver..HEAD --oneline | sed 's/\b / * /' | cut -f2- -d" " > $new_log
 new_tag=$(mktemp)
 git describe --exact-match --tags > $new_tag
