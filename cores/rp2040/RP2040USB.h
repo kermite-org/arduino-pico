@@ -22,11 +22,11 @@
 #include "pico/mutex.h"
 
 typedef struct {
-  uint16_t vendorId;
-  uint16_t productId;
-  const char *manufacturerName;
-  const char *productName;
-  const char *serialNumberText;
+    uint16_t vendorId;
+    uint16_t productId;
+    const char *manufacturerName;
+    const char *productName;
+    const char *serialNumberText;
 } __USBDeviceAttributes;
 
 void __USBSetDeviceAttributes(__USBDeviceAttributes &attrs);
