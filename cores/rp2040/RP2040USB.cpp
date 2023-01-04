@@ -53,8 +53,8 @@ static int __usb_task_irq;
 #endif
 
 static __USBDeviceAttributes __usb_device_attrs_default = {
-    USBD_VID,       // vid
-    USBD_PID,       // pid
+    USBD_VID,       // vendor ID
+    USBD_PID,       // product ID
     "Raspberry Pi", // manufacturer name
     "PicoArduino",  // product name
     "",             // serial number, assigned on demand if blank
@@ -66,33 +66,28 @@ void __USBSetDeviceAttributes(__USBDeviceAttributes &attrs) {
     __usb_device_attrs = attrs;
 }
 
-#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
-
-#define USBD_ITF_CDC (0) // needs 2 interfaces
-#define USBD_ITF_MAX (2)
-
-#define USBD_CDC_EP_CMD (0x81)
-#define USBD_CDC_EP_OUT (0x02)
-#define USBD_CDC_EP_IN (0x82)
-#define USBD_CDC_CMD_MAX_SIZE (8)
+#define USBD_CDC_EP_CMD          (0x81)
+#define USBD_CDC_EP_OUT          (0x02)
+#define USBD_CDC_EP_IN           (0x82)
+#define USBD_CDC_CMD_MAX_SIZE    (8)
 #define USBD_CDC_IN_OUT_MAX_SIZE (64)
 
-#define USBD_STR_0 (0x00)
-#define USBD_STR_MANUF (0x01)
-#define USBD_STR_PRODUCT (0x02)
-#define USBD_STR_SERIAL (0x03)
-#define USBD_STR_CDC (0x04)
+#define USBD_STR_0               (0x00)
+#define USBD_STR_MANUF           (0x01)
+#define USBD_STR_PRODUCT         (0x02)
+#define USBD_STR_SERIAL          (0x03)
+#define USBD_STR_CDC             (0x04)
 
-#define EPNUM_HID 0x83
+// #define USBD_HID_EPOUT           0x03
+#define USBD_HID_EPIN            0x83
 
-#define USBD_MSC_EPOUT 0x03
-#define USBD_MSC_EPIN 0x84
-#define USBD_MSC_EPSIZE 64
-
-#define EPNUM_HID2_EPOUT 0x05
-#define EPNUM_HID2_EPIN 0x85
+#define USBD_MSC_EPOUT           0x04
+#define USBD_MSC_EPIN            0x84
+#define USBD_MSC_EPSIZE          64
 
 const uint8_t *tud_descriptor_device_cb(void) {
+    bool isSerialOnly = (__USBInstallSerial && !__USBInstallKeyboard && !__USBInstallMouse && !__USBInstallJoystick && !__USBInstallGenericHID && !__USBInstallMassStorage);
+
     uint16_t vendorId = __usb_device_attrs.vendorId;
     uint16_t productId = __usb_device_attrs.productId;
 
@@ -107,11 +102,14 @@ const uint8_t *tud_descriptor_device_cb(void) {
         if (__USBInstallJoystick) {
             productId |= 0x0100;
         }
+        if (__USBInstallConsumerControl) {
+            productId |= 0x0200;
+        }
+        if (__USBInstallGenericHID) {
+            productId |= 0x0400;
+        }
         if (__USBInstallMassStorage) {
             productId ^= 0x2000;
-        }
-        if (__USBInstallSecondHID_RawHID) {
-            productId ^= 0x1000;
         }
     }
 
@@ -119,9 +117,9 @@ const uint8_t *tud_descriptor_device_cb(void) {
         .bLength = sizeof(tusb_desc_device_t),
         .bDescriptorType = TUSB_DESC_DEVICE,
         .bcdUSB = 0x0200,
-        .bDeviceClass = TUSB_CLASS_MISC,
-        .bDeviceSubClass = MISC_SUBCLASS_COMMON,
-        .bDeviceProtocol = MISC_PROTOCOL_IAD,
+        .bDeviceClass = (uint8_t) (isSerialOnly ? TUSB_CLASS_MISC : 0),
+        .bDeviceSubClass = (uint8_t) (isSerialOnly ? MISC_SUBCLASS_COMMON : 0),
+        .bDeviceProtocol = (uint8_t) (isSerialOnly ? MISC_PROTOCOL_IAD : 0),
         .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
         .idVendor = vendorId,
         .idProduct = productId,
@@ -146,28 +144,12 @@ int __USBGetConsumerControlReportID() {
     return 1 + (__USBInstallKeyboard ? 1 : 0) + (__USBInstallMouse ? 1 : 0) + (__USBInstallJoystick ? 1 : 0);
 }
 
-int __USBGetHIDInstanceIndexForSharedHID() {
-    bool hasSerial = __USBInstallSerial;
-    return hasSerial ? 0 : -1;
-}
-
-int __USBGetHIDInstanceIndexForRawHID() {
-    bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallJoystick;
-    bool hasHID2 = __USBInstallSecondHID_RawHID;
-    if (hasHID && hasHID2) {
-        return 1;
-    } else if (hasHID2) {
-        return 0;
-    } else {
-        return -1;
-    }
+int __USBGetGenericHIDReportID() {
+    return 1 + (__USBInstallKeyboard ? 1 : 0) + (__USBInstallMouse ? 1 : 0) + (__USBInstallJoystick ? 1 : 0) + (__USBGetConsumerControlReportID ? 1 : 0);
 }
 
 static int __hid_report_len = 0;
 static uint8_t *__hid_report = nullptr;
-
-static int __hid2_report_len = 0;
-static uint8_t *__hid2_report = nullptr;
 
 static uint8_t *GetDescHIDReport(int *len) {
     if (len) {
@@ -176,18 +158,12 @@ static uint8_t *GetDescHIDReport(int *len) {
     return __hid_report;
 }
 
-static uint8_t *GetDescHID2Report(int *len) {
-    if (len) {
-        *len = __hid2_report_len;
-    }
-    return __hid2_report;
-}
-
 enum {
     Report_Type_Keyboard = 0,
     Report_Type_Mouse,
     Report_Type_Joystick,
     Report_Type_ConsumerControl,
+    Report_Type_GenericHID,
     Report_Type_Count
 };
 void __SetupDescHIDReport() {
@@ -206,6 +182,9 @@ void __SetupDescHIDReport() {
         if (__USBInstallConsumerControl) {
             report_types[pos++] = Report_Type_ConsumerControl;
         }
+        if (__USBInstallGenericHID) {
+            report_types[pos++] = Report_Type_GenericHID;
+        }
     }
     int count = pos;
 
@@ -222,6 +201,7 @@ void __SetupDescHIDReport() {
         uint8_t desc_hid_report_mouse[] = { TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(1)) };
         uint8_t desc_hid_report_joystick[] = { TUD_HID_REPORT_DESC_GAMEPAD(HID_REPORT_ID(1)) };
         uint8_t desc_hid_report_consumer_control[] = { TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(1)) };
+        uint8_t desc_hid_report_generic_hid[] = { TUD_HID_REPORT_DESC_GENERIC_INOUT(63, HID_REPORT_ID(1)) };
 
         for (int i = 0; i < count; i++) {
             int report_type = report_types[i];
@@ -233,6 +213,8 @@ void __SetupDescHIDReport() {
                 size += sizeof(desc_hid_report_joystick);
             } else if (report_type == Report_Type_ConsumerControl) {
                 size += sizeof(desc_hid_report_consumer_control);
+            } else if (report_type == Report_Type_GenericHID) {
+                size += sizeof(desc_hid_report_generic_hid);
             }
         }
     };
@@ -257,8 +239,12 @@ void __SetupDescHIDReport() {
                 uint8_t desc[] = { TUD_HID_REPORT_DESC_GAMEPAD(HID_REPORT_ID(report_id)) };
                 memcpy(__hid_report + offset, desc, sizeof(desc));
                 offset += sizeof(desc);
-            } else if (Report_Type_ConsumerControl) {
+            } else if (report_type == Report_Type_ConsumerControl) {
                 uint8_t desc[] = { TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(report_id)) };
+                memcpy(__hid_report + offset, desc, sizeof(desc));
+                offset += sizeof(desc);
+            } else if (report_type == Report_Type_GenericHID) {
+                uint8_t desc[] = { TUD_HID_REPORT_DESC_GENERIC_INOUT(63, HID_REPORT_ID(report_id)) };
                 memcpy(__hid_report + offset, desc, sizeof(desc));
                 offset += sizeof(desc);
             }
@@ -266,28 +252,12 @@ void __SetupDescHIDReport() {
     }
 }
 
-void __SetupDescHID2Report() {
-    if (__USBInstallSecondHID_RawHID) {
-        uint8_t desc_hid_report_genericHID[] = { TUD_HID_REPORT_DESC_GENERIC_INOUT(64) };
-        int size = sizeof(desc_hid_report_genericHID);
-        __hid2_report = (uint8_t *) malloc(size);
-        memcpy(__hid2_report, desc_hid_report_genericHID, size);
-        __hid2_report_len = size;
-    } else {
-        __hid2_report = nullptr;
-        __hid2_report_len = 0;
-    }
-}
-
 // Invoked when received GET HID REPORT DESCRIPTOR
 // Application return pointer to descriptor
 // Descriptor contents must exist long enough for transfer to complete
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
-    if (instance == 0) {
-        return GetDescHIDReport(nullptr);
-    } else {
-        return GetDescHID2Report(nullptr);
-    }
+    (void) instance;
+    return GetDescHIDReport(nullptr);
 }
 
 static uint8_t *usbd_desc_cfg = nullptr;
@@ -299,14 +269,12 @@ const uint8_t *tud_descriptor_configuration_cb(uint8_t index) {
 void __SetupUSBDescriptor() {
     if (!usbd_desc_cfg) {
         bool hasSerial = __USBInstallSerial;
-        bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallJoystick;
+        bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallJoystick || __USBInstallConsumerControl || __USBInstallGenericHID;
         bool hasMSD = __USBInstallMassStorage;
-        bool hasHID2 = __USBInstallSecondHID_RawHID;
 
         uint8_t itf_cdc = -1;
         uint8_t itf_hid = -1;
         uint8_t itf_msd = -1;
-        uint8_t itf_hid2 = -1;
 
         uint8_t itf_pos = 0;
         if (hasSerial) {
@@ -321,10 +289,6 @@ void __SetupUSBDescriptor() {
             itf_msd = itf_pos;
             itf_pos++;
         }
-        if (hasHID2) {
-            itf_hid2 = itf_pos;
-            itf_pos++;
-        }
         uint8_t interface_count = itf_pos;
 
         uint8_t cdc_desc[TUD_CDC_DESC_LEN] = {
@@ -336,21 +300,17 @@ void __SetupUSBDescriptor() {
         GetDescHIDReport(&hid_report_len);
         uint8_t hid_desc[TUD_HID_DESC_LEN] = {
             // Interface number, string index, protocol, report descriptor len, EP In & Out address, size & polling interval
-            TUD_HID_DESCRIPTOR(itf_hid, 0, HID_ITF_PROTOCOL_NONE, hid_report_len, EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 10)
+            TUD_HID_DESCRIPTOR(itf_hid, 0, HID_ITF_PROTOCOL_NONE, hid_report_len, USBD_HID_EPIN, CFG_TUD_HID_EP_BUFSIZE, 10)
         };
+        // rawhid host to device sending does'nt work when sent via out endpoint. further investigation needed.
+        //  uint8_t hid_desc[TUD_HID_INOUT_DESC_LEN] = {
+        //      // Interface number, string index, protocol, report descriptor len, EP In & Out address, size & polling interval
+        //      TUD_HID_INOUT_DESCRIPTOR(itf_hid, 0, HID_ITF_PROTOCOL_NONE, hid_report_len, USBD_HID_EPOUT, USBD_HID_EPIN, CFG_TUD_HID_EP_BUFSIZE, 10)
+        //  };
 
         uint8_t msd_desc[TUD_MSC_DESC_LEN] = { TUD_MSC_DESCRIPTOR(itf_msd, 0, USBD_MSC_EPOUT, USBD_MSC_EPIN, USBD_MSC_EPSIZE) };
 
-        int hid2_report_len;
-        GetDescHID2Report(&hid2_report_len);
-        uint8_t hid2_desc[TUD_HID_INOUT_DESC_LEN] = {
-            // Interface number, string index, protocol, report descriptor len, EP In & Out address, size & polling interval
-            TUD_HID_INOUT_DESCRIPTOR(itf_hid2, 0, HID_ITF_PROTOCOL_NONE, hid2_report_len, EPNUM_HID2_EPOUT, EPNUM_HID2_EPIN, CFG_TUD_HID_EP_BUFSIZE, 10)
-        };
-
-        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (hasSerial ? sizeof(cdc_desc) : 0) +
-                            (hasHID ? sizeof(hid_desc) : 0) + (hasMSD ? sizeof(msd_desc) : 0) +
-                            (hasHID2 ? sizeof(hid2_desc) : 0);
+        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (hasSerial ? sizeof(cdc_desc) : 0) + (hasHID ? sizeof(hid_desc) : 0) + (hasMSD ? sizeof(msd_desc) : 0);
 
         uint8_t tud_cfg_desc[TUD_CONFIG_DESC_LEN] = {
             // Config number, interface count, string index, total length, attribute, power in mA
@@ -375,10 +335,6 @@ void __SetupUSBDescriptor() {
             if (hasMSD) {
                 memcpy(ptr, msd_desc, sizeof(msd_desc));
                 ptr += sizeof(msd_desc);
-            }
-            if (hasHID2) {
-                memcpy(ptr, hid2_desc, sizeof(hid2_desc));
-                ptr += sizeof(hid2_desc);
             }
         }
     }
@@ -449,7 +405,6 @@ void __USBStart() {
     }
 
     __SetupDescHIDReport();
-    __SetupDescHID2Report();
     __SetupUSBDescriptor();
 
     mutex_init(&__usb_mutex);
@@ -463,13 +418,10 @@ void __USBStart() {
     add_alarm_in_us(USB_TASK_INTERVAL, timer_task, nullptr, true);
 }
 
-static __USBHIDSetReportCallbackFn __hid_set_report_callback_functions[2];
-static int __hid_set_report_callback_functions_count = 0;
+static __USBHIDSetReportCallbackFn __hid_set_report_callback_function;
 
 void __USBSubscribeHIDSetReportCallback(__USBHIDSetReportCallbackFn fn) {
-    if (__hid_set_report_callback_functions_count < 2) {
-        __hid_set_report_callback_functions[__hid_set_report_callback_functions_count++] = fn;
-    }
+    __hid_set_report_callback_function = fn;
 }
 
 // Invoked when received GET_REPORT control request
@@ -489,11 +441,8 @@ extern "C" uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, h
 // Invoked when received SET_REPORT control request or
 // received data on OUT endpoint ( Report ID = 0, Type = 0 )
 extern "C" void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
-    for (int i = 0; i < 2; i++) {
-        __USBHIDSetReportCallbackFn fn = __hid_set_report_callback_functions[i];
-        if (fn) {
-            fn(instance, report_id, report_type, buffer, bufsize);
-        }
+    if (__hid_set_report_callback_function) {
+        __hid_set_report_callback_function(report_id, report_type, buffer, bufsize);
     }
 }
 
