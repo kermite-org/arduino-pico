@@ -66,33 +66,30 @@ void __USBSetDeviceAttributes(__USBDeviceAttributes &attrs) {
     __usb_device_attrs = attrs;
 }
 
-#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
-
-#define USBD_ITF_CDC (0) // needs 2 interfaces
-#define USBD_ITF_MAX (2)
-
-#define USBD_CDC_EP_CMD (0x81)
-#define USBD_CDC_EP_OUT (0x02)
-#define USBD_CDC_EP_IN (0x82)
-#define USBD_CDC_CMD_MAX_SIZE (8)
+#define USBD_CDC_EP_CMD          (0x81)
+#define USBD_CDC_EP_OUT          (0x02)
+#define USBD_CDC_EP_IN           (0x82)
+#define USBD_CDC_CMD_MAX_SIZE    (8)
 #define USBD_CDC_IN_OUT_MAX_SIZE (64)
 
-#define USBD_STR_0 (0x00)
-#define USBD_STR_MANUF (0x01)
-#define USBD_STR_PRODUCT (0x02)
-#define USBD_STR_SERIAL (0x03)
-#define USBD_STR_CDC (0x04)
+#define USBD_STR_0               (0x00)
+#define USBD_STR_MANUF           (0x01)
+#define USBD_STR_PRODUCT         (0x02)
+#define USBD_STR_SERIAL          (0x03)
+#define USBD_STR_CDC             (0x04)
 
-#define EPNUM_HID 0x83
+#define EPNUM_HID                0x83
 
-#define USBD_MSC_EPOUT 0x03
-#define USBD_MSC_EPIN 0x84
-#define USBD_MSC_EPSIZE 64
+#define USBD_MSC_EPOUT           0x03
+#define USBD_MSC_EPIN            0x84
+#define USBD_MSC_EPSIZE          64
 
-#define EPNUM_HID2_EPOUT 0x05
-#define EPNUM_HID2_EPIN 0x85
+#define EPNUM_HID2_EPOUT         0x05
+#define EPNUM_HID2_EPIN          0x85
 
 const uint8_t *tud_descriptor_device_cb(void) {
+    bool isSerialOnly = (__USBInstallSerial && !__USBInstallKeyboard && !__USBInstallMouse && !__USBInstallJoystick && !__USBInstallConsumerControl && !__USBInstallMassStorage && !__USBInstallSecondHID_RawHID);
+
     uint16_t vendorId = __usb_device_attrs.vendorId;
     uint16_t productId = __usb_device_attrs.productId;
 
@@ -107,6 +104,9 @@ const uint8_t *tud_descriptor_device_cb(void) {
         if (__USBInstallJoystick) {
             productId |= 0x0100;
         }
+        if (__USBInstallConsumerControl) {
+            productId |= 0x0200;
+        }
         if (__USBInstallMassStorage) {
             productId ^= 0x2000;
         }
@@ -119,9 +119,9 @@ const uint8_t *tud_descriptor_device_cb(void) {
         .bLength = sizeof(tusb_desc_device_t),
         .bDescriptorType = TUSB_DESC_DEVICE,
         .bcdUSB = 0x0200,
-        .bDeviceClass = TUSB_CLASS_MISC,
-        .bDeviceSubClass = MISC_SUBCLASS_COMMON,
-        .bDeviceProtocol = MISC_PROTOCOL_IAD,
+        .bDeviceClass = (uint8_t) (isSerialOnly ? TUSB_CLASS_MISC : 0),
+        .bDeviceSubClass = (uint8_t) (isSerialOnly ? MISC_SUBCLASS_COMMON : 0),
+        .bDeviceProtocol = (uint8_t) (isSerialOnly ? MISC_PROTOCOL_IAD : 0),
         .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
         .idVendor = vendorId,
         .idProduct = productId,
@@ -257,7 +257,7 @@ void __SetupDescHIDReport() {
                 uint8_t desc[] = { TUD_HID_REPORT_DESC_GAMEPAD(HID_REPORT_ID(report_id)) };
                 memcpy(__hid_report + offset, desc, sizeof(desc));
                 offset += sizeof(desc);
-            } else if (Report_Type_ConsumerControl) {
+            } else if (report_type == Report_Type_ConsumerControl) {
                 uint8_t desc[] = { TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(report_id)) };
                 memcpy(__hid_report + offset, desc, sizeof(desc));
                 offset += sizeof(desc);
@@ -299,7 +299,7 @@ const uint8_t *tud_descriptor_configuration_cb(uint8_t index) {
 void __SetupUSBDescriptor() {
     if (!usbd_desc_cfg) {
         bool hasSerial = __USBInstallSerial;
-        bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallJoystick;
+        bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallJoystick || __USBInstallConsumerControl;
         bool hasMSD = __USBInstallMassStorage;
         bool hasHID2 = __USBInstallSecondHID_RawHID;
 
