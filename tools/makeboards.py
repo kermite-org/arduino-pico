@@ -75,10 +75,10 @@ def BuildBoot(name):
         print("%s.menu.boot2.%s.build.boot2=%s" % (name, l[1], l[1]))
 
 def BuildUSBStack(name):
-    print("%s.menu.usbstack.picosdk=Pico SDK" % (name))
-    print('%s.menu.usbstack.picosdk.build.usbstack_flags=' % (name))
     print("%s.menu.usbstack.tinyusb=Adafruit TinyUSB" % (name))
     print('%s.menu.usbstack.tinyusb.build.usbstack_flags=-DUSE_TINYUSB "-I{runtime.platform.path}/libraries/Adafruit_TinyUSB_Arduino/src/arduino"' % (name))
+    print("%s.menu.usbstack.picosdk=Pico SDK" % (name))
+    print('%s.menu.usbstack.picosdk.build.usbstack_flags=' % (name))
 
 def BuildWithoutUSBStack(name):
     print("%s.menu.usbstack.nousb=No USB" % (name))
