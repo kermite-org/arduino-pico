@@ -66,7 +66,7 @@ def BuildExceptions(name):
     print("%s.menu.exceptions.Enabled.build.flags.libstdcpp=-lstdc++-exc" % (name))
 
 def BuildBoot(name):
-    for l in [ ("Generic SPI /2", "boot2_generic_03h_2_padded_checksum"),  ("Generic SPI /4", "boot2_generic_03h_4_padded_checksum"),
+    for l in [ ("Generic SPI /4", "boot2_generic_03h_4_padded_checksum"),("Generic SPI /2", "boot2_generic_03h_2_padded_checksum"),
             ("IS25LP080 QSPI /2", "boot2_is25lp080_2_padded_checksum"), ("IS25LP080 QSPI /4", "boot2_is25lp080_4_padded_checksum"),
             ("W25Q080 QSPI /2", "boot2_w25q080_2_padded_checksum"), ("W25Q080 QSPI /4", "boot2_w25q080_4_padded_checksum"),
             ("W25X10CL QSPI /2", "boot2_w25x10cl_2_padded_checksum"), ("W25X10CL QSPI /4", "boot2_w25x10cl_4_padded_checksum"),
@@ -187,9 +187,10 @@ def MakeBoard(name, vendor_name, product_name, vid, pid, pwr, boarddefine, flash
     for a, b, c, d in [ ["", "", "uf2conv", "uf2conv-network"], ["picoprobe", " (Picoprobe)", "picoprobe", None], ["picodebug", " (pico-debug)", "picodebug", None]]:
         n = name + a
         p = product_name + b
-        fssizelist = [ 0, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 ]
+        fssizelist = [ 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 ]
         for i in range(1, flashsizemb):
             fssizelist.append(i * 1024 * 1024)
+        fssizelist.append(0)
         vidtouse = vid;
         ramsizekb = 256;
         dbg = "picoprobe.tcl"
@@ -204,6 +205,7 @@ def MakeBoard(name, vendor_name, product_name, vid, pid, pwr, boarddefine, flash
             pidtouse = pid
         BuildHeader(n, vendor_name, p, vidtouse, pidtouse, vid, pid, pwr, boarddefine, name, c, d, flashsizemb * 1024 * 1024, ramsizekb * 1024, boot2, dbg, extra)
         if name == "generic":
+            BuildFlashMenu(n, 2*1024*1024, [64*1024])
             BuildFlashMenu(n, 2*1024*1024, [0, 1*1024*1024])
             BuildFlashMenu(n, 4*1024*1024, [0, 2*1024*1024])
             BuildFlashMenu(n, 8*1024*1024, [0, 4*1024*1024])
@@ -407,6 +409,7 @@ MakeBoard("wiznet_5500_evb_pico", "WIZnet", "W5500-EVB-Pico", "0x2e8a", "0x1029"
 
 # Generic
 MakeBoard("generic", "Generic", "RP2040", "0x2e8a", "0xf00a", 250, "GENERIC_RP2040", 16, "boot2_generic_03h_4_padded_checksum")
+
 
 sys.stdout.close()
 with open(os.path.abspath(os.path.dirname(__file__)) + '/../package/package_pico_index.template.json', 'w') as f:
